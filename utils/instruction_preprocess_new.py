@@ -41,6 +41,90 @@ def get_chembl_instructions(data_path, frac=1):
     return df
 
 
+def preprocess_llama_2(
+    args,
+    instruction,
+    tokenizer,
+    max_length,
+    mode='train'
+) -> Dict:
+    conv = conv_templates["llama_2"].copy()
+    roles = conv.roles
+
+    tokenizer.padding_side = 'right' if mode == 'train' else 'left'
+
+    # Apply prompt templates
+    conversations = []
+    conv.append_message(roles[0], instruction["prompt"])
+    # conv.append_message(roles[0], "What is the meaning of AI?")
+    if mode == 'train':
+        conv.append_message(roles[1], instruction["gpt"])
+    else:
+        conv.append_message(roles[1], None)
+    conversations.append(conv.get_prompt())
+
+    assert conv.sep_style == SeparatorStyle.LLAMA_2
+
+    # Tokenize conversations
+    input_ids = tokenizer(
+        conversations,
+        return_tensors="pt",
+        padding="max_length",
+        max_length=max_length,
+        truncation=True,
+    ).input_ids
+
+    if mode != 'train':
+        targets = tokenizer(
+            [instruction["gpt"]+'</s>'],
+            return_tensors="pt",
+            padding="max_length",
+            max_length=100,
+            truncation=True,
+        ).input_ids
+    else:
+        targets = input_ids.clone()
+        # Mask targets
+        sep = "[/INST] "
+        for conversation, target in zip(conversations, targets):
+            total_len = int(target.ne(tokenizer.pad_token_id).sum())
+
+            rounds = conversation.split(conv.sep2)
+            cur_len = 1
+            target[:cur_len] = IGNORE_TOKEN_ID
+            for i, rou in enumerate(rounds):
+                if rou == "":
+                    break
+
+                parts = rou.split(sep)
+                if len(parts) != 2:
+                    break
+                parts[0] += sep
+
+                round_len = len(tokenizer(rou).input_ids)
+                instruction_len = len(tokenizer(parts[0]).input_ids) - 2
+
+                target[cur_len : cur_len + instruction_len] = IGNORE_TOKEN_ID
+
+                cur_len += round_len
+            target[cur_len:] = IGNORE_TOKEN_ID
+
+            if cur_len < tokenizer.model_max_length:
+                if cur_len != total_len:
+                    target[:] = IGNORE_TOKEN_ID
+                    print(
+                        f"WARNING: tokenization mismatch: {cur_len} vs. {total_len}."
+                        f" (ignored)"
+                    )
+
+    return dict(
+        input_ids=input_ids,
+        target_ids=targets,
+        attention_mask=input_ids.ne(tokenizer.pad_token_id),
+        text=conversations[0]
+    )
+
+
 def preprocess_opt(instruction, tokenizer, max_length, mode='train'):
     prompt = instruction['prompt']
     if mode == 'train':
@@ -86,15 +170,19 @@ def preprocess_opt(instruction, tokenizer, max_length, mode='train'):
 
 
 def preprocess(
+    args,
     instruction,
-    tokenizer: transformers.PreTrainedTokenizer,
+    tokenizer,
     max_length,
     mode='train'
 ) -> Dict:
-    conv = conv_templates["vicuna_v1_1"].copy()
-    assert conv.sep_style == SeparatorStyle.TWO
+    if args.llm_type == "llama3":
+        conv = conv_templates["llama3"].copy()
+    else:
+        conv = conv_templates["vicuna_v1_1"].copy()
+        assert conv.sep_style == SeparatorStyle.TWO
 
-    roles = ["USER", "ASSISTANT"]
+    roles = conv.roles
     tokenizer.padding_side = 'right' if mode == 'train' else 'left'
 
     # Apply prompt templates
@@ -117,11 +205,15 @@ def preprocess(
     ).input_ids
     
     if mode != 'train':
+        if args.llm_type == 'llama3':
+            end_token = "<|end_of_text|>"
+        else:
+            end_token = "</s>"
         targets = tokenizer(
-            [instruction["gpt"]+"</s>"],
+            [instruction["gpt"]+end_token],
             return_tensors="pt",
             padding="max_length",
-            max_length=200,
+            max_length=100,
             truncation=True,
         ).input_ids
     else:
@@ -190,23 +282,43 @@ class InstructionDataset(Dataset):
             # self.paper = torch.load(f"./data/graph_data_all.pt")
             # self.pubmed = self.paper['pubmed']
         else:
-            if args.dataset == 'product':
-                self.graph_data = torch.load(f"./data/graph_data_pd.pt")['product']
-            else:
-                self.graph_data = torch.load(f"./data/graph_data_ecommercial.pt")
-                self.paper = torch.load(f"./data/graph_data_paper.pt")
-                self.arxiv = self.paper['arxiv']
-                self.pubmed = self.paper['pubmed']
-                self.cora = self.paper['cora']
-                self.cora_simple = self.paper['cora_simple']
-                self.children = self.graph_data['book_children']
-                self.history = self.graph_data['book_history']
-                self.computer = self.graph_data['computer']
-                self.photo = self.graph_data['photo']
-                self.sports = self.graph_data['sports']
             self.instructions = get_instructions(f"./instruction/{args.dataset}/{args.dataset}_dataset_{self.mode}.json")
+
+        if args.embed_type == 'sbert':
+            # self.ecom = torch.load(f"./data/sbert_graph_data_ecommercial.pt")
+            self.paper = torch.load(f"./data/sbert_graph_data_paper.pt")
+        elif args.embed_type == 'roberta':
+            # self.ecom = torch.load(f"./data/sbert_graph_data_ecommercial.pt")
+            self.paper = torch.load(f"./data/roberta_graph_data_paper.pt")
+        else:
+            self.paper = torch.load(f"./data/graph_data_paper.pt")
+        self.ecom = torch.load(f"./data/graph_data_ecommercial.pt")
+        # self.paper = torch.load(f"./data/w2v_paper_data_random.pt")
+        self.arxiv = self.paper['arxiv']
+        self.pubmed = self.paper['pubmed']
+        self.cora = self.paper['cora']
+        # self.cora_simple = self.paper['cora_simple']
+        self.children = self.ecom['book_children']
+        self.history = self.ecom['book_history']
+        self.computer = self.ecom['computer']
+        self.photo = self.ecom['photo']
+        self.sports = self.ecom['sports']
+        self.name2data = {
+            'arxiv': self.arxiv,
+            'pubmed': self.pubmed,
+            'cora': self.cora,
+            # 'cora_simple': self.cora_simple,
+            'children': self.children,
+            'history': self.history,
+            'book_children': self.children,
+            'book_history': self.history,
+            'computer': self.computer,
+            'photo': self.photo,
+            'sports': self.sports,
+        }
         # args.gnn_input = len(self.instructions.loc[0, 'x'][0])
-        args.gnn_input = 128
+        args.gnn_input = self.arxiv.x.shape[1]
+        print(f'Hidden dim: {args.gnn_input}')
         args.edge_dim = None
         
     def __len__(self):
@@ -216,7 +328,11 @@ class InstructionDataset(Dataset):
         # instruction = self.instructions.iloc[idx]
         raw = self.instructions.iloc[idx]
         instruction = raw.copy()
-        tokens = " ".join([f"<Node {i}>" for i in range (1, 1 + self.args.num_token)])
+        if self.args.mask_token_list is not None:
+            num_mask = len(list(self.args.mask_token_list.split(',')))
+            tokens = " ".join([f"<Node {i}>" for i in range (1, 1 + self.args.num_token - num_mask)])
+        else:
+            tokens = " ".join([f"<Node {i}>" for i in range (1, 1 + self.args.num_token)])
         if not self.args.inference:
             if self.args.dataset == 'arxiv':  
                 instruction['prompt'] = (raw['prompt'].split('Abstract: ')[0] + 'Title: ' + raw['prompt'].split('Title: ')[1]).replace("<Node 1>", tokens)
@@ -233,91 +349,103 @@ class InstructionDataset(Dataset):
             else:
                 instruction['prompt'] = raw['prompt'].replace("<Node 1>", tokens)
         else:
-            if self.args.test_dataset in ['arxiv', 'pubmed', 'cora', 'cora_simple']:  
-                instruction['prompt'] = (raw['prompt'].split('Abstract: ')[0] + 'Title: ' + raw['prompt'].split('Title: ')[1]).replace("<Node 1>", tokens)
-                # instruction['prompt'] = 'Given a paper with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1]
-            # elif self.args.test_dataset == 'cora_simple':
-            #     instruction['prompt'] = raw['prompt'].replace("<Node 1>", tokens)
-                # instruction['prompt'] = 'Given a paper with the following information:\n' + raw['prompt'].split('with the following information: \n')[1]
-            else:
-                instruction['prompt'] = raw['prompt'].replace("<Node 1>", tokens)
+            if self.args.test_dataset in ['arxiv', 'pubmed', 'cora', 'cora_simple']:
+                if not self.args.ablation:
+                    instruction['prompt'] = (raw['prompt'].split('Abstract: ')[0] + 'Title: ' + raw['prompt'].split('Title: ')[1]).replace("<Node 1>", tokens)
+                else:
+                    if self.args.test_dataset == 'pubmed':
+                        instruction['prompt'] = 'Given a paper with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1].split("Question: ")[0] + "Question: " + 'Which case of Type 1 diabetes, Type 2 diabetes, or Experimentally induced diabetes does this paper involve? Please give one answer of either Type 1 diabetes, Type 2 diabetes, or Experimentally induced diabetes directly.'
+                    elif self.args.test_dataset == 'arxiv':
+                        instruction['prompt'] = 'Given a paper with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1]
+                        # instruction['prompt'] = 'Given a paper with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1].split("Question: ")[0] + "Question: " + 'Which arXiv CS sub-category does this paper belong to? Give the most likely arXiv CS sub-categories of this paper directly, in the form "cs.XX" with full name of the category, '
+                    else:
+                        instruction['prompt'] = 'Given a paper with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1]
+                # instruction['prompt'] = 'Given a paper with the following information:\n' + 'Abstract: ' + raw['prompt'].split('Abstract: ')[1]
+            elif self.args.test_dataset in ['book_children', 'book_history', 'computer', 'sports', 'photo']:
+                if not self.args.ablation:
+                    instruction['prompt'] = raw['prompt'].replace("<Node 1>", tokens)
+                else:
+                    if self.args.test_dataset in ['computer', 'photo']:
+                        instruction['prompt'] = 'Given a electronic product with the following information:' + raw['prompt'][len('Given a representation of a electronic product: <Node 1>, with the following information:'):]
+                    elif self.args.test_dataset == 'sports':
+                        instruction['prompt'] = 'Given a fitness-related item with the following information:' + raw['prompt'][len('Given a representation of a fitness-related item: <Node 1>, with the following information:'):]
+                    elif self.args.test_dataset in ['book_children', 'book_history']:
+                        instruction['prompt'] = 'Given a book with the following information:' + raw['prompt'][len('Given a representation of a book: <Node 1>, with the following information:'):]
+            elif self.args.test_dataset.endswith('LP'):
+                if self.args.test_dataset[:-3] in ['children', 'history', 'computer', 'photo', 'sports']:
+                    if not self.args.ablation:
+                        instruction['prompt'] = raw['prompt'].replace("<Node 1>", tokens)
+                    else:
+                        instruction['prompt'] = raw['prompt'].replace(": <Node 1>, ", " ")
+                else:
+                    if not self.args.ablation:
+                        instruction['prompt'] = (raw['prompt'].split('Abstract: ')[0] + 'Title: ' + raw['prompt'].split('Title: ')[1]).replace("<Node 1>", tokens)
+                    else:
+                        instruction['prompt'] = 'Given two papers with the following information:\n' + 'Title: ' + raw['prompt'].split('Title: ')[1]
+                # instruction['prompt'] = ('Given a representation of a paper: <Node 1>, with the following information:\nTitle: ' + raw['prompt'].split('Title: ')[1].split('And the other representation of a paper')[0] + 'And the other representation of a paper: <Node 1>, with the following information:\nTitle: ' + raw['prompt'].split('Title: ')[2]).replace("<Node 1>", tokens)
+                # instruction['prompt'] = 'Given a paper with the following information:\nTitle: ' + raw['prompt'].split('Title: ')[1].split('And the other representation of a paper')[0] + 'And the other paper with the following information:\nTitle: ' + raw['prompt'].split('Title: ')[2]
         # instruction['prompt'] = (raw['prompt'].split('Description: ')[0] + 'Title: ' + raw['prompt'].split('Title: ')[1]).replace("<Node 1>", tokens)
 
-        # assert instruction['prompt'].startswith('Given a representation of a paper: <Node 1> <Node 2> <Node 3> <Node 4> <Node 5>, with the following information:'), f"{raw['prompt']}"
-
-        # ablation
-        # ab_instruction = instruction.copy()
-        # if self.args.test_dataset in ['computer', 'photo']:
-        #     ab_instruction['prompt'] = 'Given a electronic product with the following information:' + instruction['prompt'][len('Given a representation of a electronic product: <Node 1>, with the following information:'):]
-        # elif self.args.test_dataset == 'sports':
-        #     ab_instruction['prompt'] = 'Given a fitness-related item with the following information:' + instruction['prompt'][len('Given a representation of a fitness-related item: <Node 1>, with the following information:'):]
-        # elif self.args.test_dataset in ['book_children', 'book_history']:
-        #     ab_instruction['prompt'] = 'Given a book with the following information:' + instruction['prompt'][len('Given a representation of a book: <Node 1>, with the following information:'):]
-        # else:
-        #     ab_instruction['prompt'] = 'Given a paper with the following information:' + instruction['prompt'][76:]
-
-        out_dict = preprocess(instruction, self.tokenizer, self.args.max_text_length, self.mode)
+        if self.args.llm_type == 'llama2':
+            out_dict = preprocess_llama_2(self.args, instruction, self.tokenizer, self.args.max_text_length, self.mode)
+        else:
+            out_dict = preprocess(self.args, instruction, self.tokenizer, self.args.max_text_length, self.mode)
         
         # graph data
         graph = Data()
         graph.edge_index = torch.LongTensor(instruction['edge_index'])
         if not self.args.zero_shot:
-            if self.args.dataset == 'product':
+            if instruction.get('data', None) is not None:
                 node_list = torch.LongTensor(instruction['node_set'])
-                graph.x = self.graph_data.x[node_list].to(dtype=torch.bfloat16)
-                graph.lp = False
-            elif self.args.dataset == 'children_computer':
+                graph.x = self.name2data[instruction['data']].x[node_list].to(dtype=torch.bfloat16)
+            else:
+                # node_list = instruction['node_set']
+                # graph.x = torch.tensor(instruction['x'], dtype=torch.bfloat16)
                 node_list = torch.LongTensor(instruction['node_set'])
-                if instruction['data'] == 'children':
-                    graph.x = self.children.x[node_list].to(dtype=torch.bfloat16)
-                else:
-                    graph.x = self.computer.x[node_list].to(dtype=torch.bfloat16)
-                graph.lp = False
-            elif self.args.dataset.endswith('LP') or self.args.dataset == 'cross_domain':
-                node_list = torch.LongTensor(instruction['node_set'])
-                if instruction['data'] == 'arxiv':
-                    graph.x = self.arxiv.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'pubmed':
-                    graph.x = self.pubmed.x[node_list].to(dtype=torch.bfloat16)
-                if instruction['data'] == 'cora':
-                    graph.x = self.cora.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'children':
-                    graph.x = self.children.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'history':
-                    graph.x = self.history.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'computer':
-                    graph.x = self.computer.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'photo':
-                    graph.x = self.photo.x[node_list].to(dtype=torch.bfloat16)
-                elif instruction['data'] == 'sports':
-                    graph.x = self.sports.x[node_list].to(dtype=torch.bfloat16)
-                
-                if instruction['task'] == 'lp':
+                graph.x = self.name2data[self.args.dataset].x[node_list].to(dtype=torch.bfloat16)
+
+            if instruction.get('task', None) is not None:
+                if instruction.get('task', None) == 'lp':
                     graph.lp = True
-                elif instruction['task'] == 'nc':
+                else:
                     graph.lp = False
             else:
-                node_list = instruction['node_set']
-                graph.x = torch.tensor(instruction['x'], dtype=torch.bfloat16)
+                graph.lp = False
+        else:
+            if self.args.test_dataset.endswith('LP'):
+                node_list = torch.LongTensor(instruction['node_set'])
+                graph.x = self.name2data[self.args.test_dataset[:-3]].x[node_list].to(dtype=torch.bfloat16)
+                graph.lp = True
+            elif self.args.test_dataset.endswith('ICL'):
+                node_list = torch.LongTensor(instruction['node_set'])
+                graph.x = self.name2data[instruction.get('data', None)].x[node_list].to(dtype=torch.bfloat16)
+                graph.lp = False
+            else:
+                # node_list = instruction['node_set']
+                # graph.x = torch.tensor(instruction['x'], dtype=torch.bfloat16)
+                node_list = torch.LongTensor(instruction['node_set'])
+                graph.x = self.name2data[self.args.test_dataset].x[node_list].to(dtype=torch.bfloat16)
                 graph.lp = False
                 assert len(instruction['x']) == len(node_list)
-        else:
-            node_list = instruction['node_set']
-            graph.x = torch.tensor(instruction['x'], dtype=torch.bfloat16)
-            graph.lp = False
-            assert len(instruction['x']) == len(node_list)
+
         graph.edge_attr = None
-        # test
-        # graph.y = self.pubmed.y[node_list][0].reshape(-1, 1).to(dtype=torch.bfloat16)
         
-        is_node = (out_dict['input_ids'] >= 32000)
+        if self.args.llm_type == 'llama3':
+            is_node = (out_dict['input_ids'] >= 128257)
+        else:
+            is_node = (out_dict['input_ids'] >= 32000)
         extra_num = is_node.sum()
         if self.args.no_graph:
             assert extra_num == 0
         else:
             # ablation == 0
-            assert extra_num in [self.args.num_token, self.args.num_token * 2], f'extra_num: {extra_num}'
-            # assert extra_num == 0, f'extra_num: {extra_num}'
+            if self.args.mask_token_list is not None:
+                assert extra_num == self.args.num_token - num_mask
+            else:
+                if not self.args.ablation:
+                    assert extra_num in [self.args.num_token, self.args.num_token * 2], f'extra_num: {extra_num}'
+                else:
+                    assert extra_num == 0, f'extra_num: {extra_num}'
 
         out_dict['is_node'] = is_node
         out_dict['graph'] = graph

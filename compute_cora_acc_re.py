@@ -1,13 +1,22 @@
 import json
 import re
 import random
-from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score
+from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score, classification_report
 
-with open('./results/cora/graphsage_1000tp_5token_512_neg0_arxiv_linear_3_es_model_labels.txt', 'r') as f:
+prefix = 'graphsage_1000tp_20token_512_neg0_arxiv_linear_1_3400_13b_1'
+# prefix = 'soft_prompt_5'
+
+with open(f'./results/cora/{prefix}_model_labels.txt', 'r') as f:
     eval_decode_label = json.load(f)
 
-with open('./results/cora/graphsage_1000tp_5token_512_neg0_arxiv_linear_3_es_model_results.txt', 'r') as f:
+with open(f'./results/cora/{prefix}_model_results.txt', 'r') as f:
     eval_pred = json.load(f)
+
+# with open('./results/cora/graphsage_10tp_5token_ans_labels.txt', 'r') as f:
+#     eval_decode_label = json.load(f)
+
+# with open('./results/cora/graphsage_10tp_5token_ans_results.txt', 'r') as f:
+#     eval_pred = json.load(f)
 
 label_list = [
     'artificial intelligence, agents', 
@@ -92,6 +101,7 @@ patterns = label_list
 
 cnt = 0
 y, x = [], []
+s_x, s_y = [], []
 for label, pred in zip(eval_decode_label, eval_pred):
     pred = pred.lower()
     label = label.lower()
@@ -137,25 +147,19 @@ for label, pred in zip(eval_decode_label, eval_pred):
         final_ans = pred
         
     if final_ans not in label2idx.keys():
-        print("|"+final_ans+"|")
+        print(final_ans)
         cnt += 1
-        true_label = label2idx[label]
-        # 1.
-        # random_number = random.randint(0, 69)
-        # while random_number == true_label:
-        #     random_number = random.randint(0, 69)
-        # y.append(true_label)
-        # x.append(random_number)
-        # 2.
-        y.append(true_label)
-        x.append(75)
-        # 3.
         # continue
+        s_y.append(label2idx[label])
+        s_x.append(75)
     else:
         y.append(label2idx[label])
         x.append(label2idx[final_ans])
+        s_y.append(label2idx[label])
+        s_x.append(label2idx[final_ans])
 
-acc = accuracy_score(y, x)
+# acc = accuracy_score(y, x)
+acc = accuracy_score(s_y, s_x)
 r = recall_score(y, x, average="macro")
 p = precision_score(y, x, average="macro")
 f1 = f1_score(y, x, average="macro")
@@ -165,7 +169,9 @@ f1 = f1_score(y, x, average="macro")
 # f1 = f1_score(y, x, average="weighted")
 
 print(f"Acc: {acc}")
+print(accuracy_score(y, x))
 print(f"F1: {f1}")
 print(f"Precison: {p}")
 print(f"Recall: {r}")
 print(cnt / len(eval_decode_label))
+print(classification_report(y, x))

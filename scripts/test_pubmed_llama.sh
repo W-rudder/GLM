@@ -9,21 +9,25 @@ accelerate launch \
     --main_process_port 25678 \
     train_glm.py \
         --freeze_llama \
-        --dataset arxiv \
-        --pretrain_gnn 'GraphSAGE_arxiv_512_neg0_PCA_1000_tp_undir_run_3_test.pth' \
-        --gnn_type 'SoftPrompt' \
+        --inference \
+        --zero_shot \
+        --best_epoch 0 \
+        --llm_type 'llama2' \
+        --dataset 'arxiv' \
+        --test_dataset pubmed \
+        --neck 512 \
         --att_d_model 2048 \
         --gnn_output 4096 \
-        --neck 512 \
 	    --grad_steps 1 \
-        --batch_size 2 \
+        --batch_size 1 \
         --num_token 5 \
         --clip_grad_norm 1.0 \
-        --backbone '/home/zuographgroup/zhr/model/vicuna-7b-v1.5' \
+        --backbone '/home/zuographgroup/zhr/model/Llama-2-7b-chat-hf' \
         --epoch 1 \
-	    --weight_decay 0. \
+	    --weight_decay 0.1 \
         --max_text_length 700 \
         --gen_max_length 64 \
-	    --lr 0.002 \
-        --prefix 'soft_prompt' \
-        --seed 42
+	    --lr 0.001 \
+        --prefix 'graphsage_0tp_5token_512_neg0_arxiv_linear_2_3400' \
+        --suffix 'llama2_baseline' \
+        --ablation

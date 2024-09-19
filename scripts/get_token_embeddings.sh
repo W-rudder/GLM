@@ -12,6 +12,7 @@ accelerate launch \
         --inference \
         --zero_shot \
         --best_epoch 0 \
+        --gnn_type 'GraphSAGE' \
         --dataset 'arxiv' \
         --test_dataset pubmed \
         --neck 512 \
@@ -21,10 +22,13 @@ accelerate launch \
         --batch_size 4 \
         --num_token 5 \
         --clip_grad_norm 1.0 \
-        --backbone '/home/zuographgroup/zhr/model/vicuna-7b-v1.5' \
+        --backbone '/home/wangduo/zhr/model/vicuna-7b-v1.5' \
         --epoch 1 \
 	    --weight_decay 0.1 \
         --max_text_length 700 \
         --gen_max_length 64 \
 	    --lr 0.001 \
-        --prefix 'graphsage_0tp_5token_linear'
+        --prefix 'graphsage_1000tp_5token_512_neg0_arxiv_linear_1_3400' \
+        --embed_type 'bert' \
+        --conv_type 'sage' \
+        --llm_type 'vicuna'

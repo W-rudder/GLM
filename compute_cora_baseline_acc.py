@@ -1,10 +1,17 @@
 import json
 from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score
 
-with open('./results/cora/graphsage_10tp_5token_ans_labels.txt', 'r') as f:
+# with open('./results/cora/graphsage_10tp_5token_ans_labels.txt', 'r') as f:
+#     eval_decode_label = json.load(f)
+
+# with open('./results/cora/graphsage_10tp_5token_ans_results.txt', 'r') as f:
+#     eval_pred = json.load(f)
+
+prefix = 'graphsage_1000tp_5token_512_neg0_arxiv_linear_1_3400_cora_baseline2'
+with open(f'./results/cora/{prefix}_model_labels.txt', 'r') as f:
     eval_decode_label = json.load(f)
 
-with open('./results/cora/graphsage_10tp_5token_ans_results.txt', 'r') as f:
+with open(f'./results/cora/{prefix}_model_results.txt', 'r') as f:
     eval_pred = json.load(f)
 
 label_list = [
@@ -89,6 +96,7 @@ label2idx = {k: v for v, k in enumerate(label_list)}
 
 cnt = 0
 y, x = [], []
+s_x, s_y = [], []
 for label, pred in zip(eval_decode_label, eval_pred):
     pred = pred.lower()
     label = label.lower()
@@ -159,23 +167,26 @@ for label, pred in zip(eval_decode_label, eval_pred):
         pred = pred.replace('data structures, algorithms,', 'data structures, algorithms', 1)
         
     if pred not in label2idx.keys():
-        # print("|"+pred+"|")
+        print(pred)
         cnt += 1
         # continue
-        y.append(label2idx[label])
-        x.append(75)
+        s_y.append(label2idx[label])
+        s_x.append(75)
     else:
         y.append(label2idx[label])
         x.append(label2idx[pred])
+        s_y.append(label2idx[label])
+        s_x.append(label2idx[pred])
 
-acc = accuracy_score(y, x)
-# r = recall_score(y, x, average="macro")
-# p = precision_score(y, x, average="macro")
-# f1 = f1_score(y, x, average="macro")
+# acc = accuracy_score(y, x)
+acc = accuracy_score(s_y, s_x)
+r = recall_score(y, x, average="macro")
+p = precision_score(y, x, average="macro")
+f1 = f1_score(y, x, average="macro")
 
-r = recall_score(y, x, average="weighted")
-p = precision_score(y, x, average="weighted")
-f1 = f1_score(y, x, average="weighted")
+# r = recall_score(y, x, average="weighted")
+# p = precision_score(y, x, average="weighted")
+# f1 = f1_score(y, x, average="weighted")
 
 print(acc)
 print(f1)

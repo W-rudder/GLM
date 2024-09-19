@@ -11,6 +11,7 @@ accelerate launch \
         --inference \
         --zero_shot \
         --best_epoch 0 \
+        --gnn_type $9 \
         --dataset $1 \
         --test_dataset computer \
         --att_d_model 2048 \
@@ -18,12 +19,15 @@ accelerate launch \
         --neck $2 \
 	    --grad_steps 1 \
         --batch_size 4 \
-        --num_token 5 \
+        --num_token $4 \
         --clip_grad_norm 1.0 \
-        --backbone '/home/zuographgroup/zhr/model/vicuna-7b-v1.5' \
+        --backbone $6 \
         --epoch 1 \
 	    --weight_decay 0.1 \
         --max_text_length 800 \
         --gen_max_length 64 \
 	    --lr 0.001 \
-        --prefix $3
+        --prefix $3 \
+        --embed_type $5 \
+        --conv_type $7 \
+        --llm_type $8

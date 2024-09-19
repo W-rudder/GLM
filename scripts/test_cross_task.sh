@@ -6,14 +6,15 @@ wandb offline
 
 accelerate launch \
     --config_file accelerate_config/my_config_0.yaml \
+    --main_process_port 25679 \
     train_glm.py \
         --freeze_llama \
         --inference \
         --zero_shot \
         --best_epoch 0 \
-        --gnn_type 'SoftPrompt' \
-        --dataset arxiv \
-        --test_dataset pubmed \
+        --gnn_type 'GraphSAGE' \
+        --dataset $1 \
+        --test_dataset $2 \
         --neck 512 \
         --att_d_model 2048 \
         --gnn_output 4096 \
@@ -21,10 +22,14 @@ accelerate launch \
         --batch_size 4 \
         --num_token 5 \
         --clip_grad_norm 1.0 \
-        --backbone '/home/zuographgroup/zhr/model/vicuna-7b-v1.5' \
+        --backbone '/home/wangduo/zhr/model/vicuna-7b-v1.5' \
         --epoch 1 \
 	    --weight_decay 0.1 \
-        --max_text_length 700 \
+        --max_text_length $3 \
         --gen_max_length 64 \
 	    --lr 0.001 \
-        --prefix 'soft_prompt'
+        --prefix $4 \
+        --suffix 'LP_mean' \
+        --embed_type 'bert' \
+        --conv_type 'sage' \
+        --llm_type 'vicuna'

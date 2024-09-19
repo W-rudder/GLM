@@ -1,4 +1,4 @@
-from transformers import default_data_collator, LlamaTokenizerFast, LlamaConfig, AutoTokenizer, LlamaTokenizer
+from transformers import default_data_collator, LlamaTokenizerFast, LlamaConfig, AutoTokenizer, LlamaTokenizer, LlamaForCausalLM
 import torch
 import dgl
 import json
@@ -10,9 +10,31 @@ from utils import *
 from transformers.trainer_pt_utils import LabelSmoother
 
 
-tokenizer = LlamaTokenizer.from_pretrained('/home/zuographgroup/zhr/model/vicuna-7b-v1.5')
+tokenizer = LlamaTokenizer.from_pretrained('/home/wangduo/zhr/model/vicuna-7b-v1.5')
 tokenizer.pad_token=tokenizer.unk_token
-df = pd.read_json("./instruction/cora_simple/cora_simple_dataset_test.json")
+df = pd.read_json("./instruction/cora_LP/cora_LP_dataset_test.json")
+
+# model_name = '/home/zuographgroup/zhr/model/vicuna-7b-v1.5'
+# device = torch.device('cuda:0')
+# model = LlamaForCausalLM.from_pretrained(
+#     model_name,
+#     torch_dtype=torch.float16, 
+#     use_cache=True, 
+#     low_cpu_mem_usage=True,
+#     device_map={"":device}
+#     )
+# llama_embeds = model.get_input_embeddings().weight.data
+# print(llama_embeds[0])
+
+# test_p = 'aaaaaaa'
+# input_ids = tokenizer(
+#     test_p,
+#     return_tensors="pt",
+#     padding="max_length",
+#     max_length=20,
+#     truncation=True,
+# ).input_ids
+# print(input_ids)
 # df = pd.read_parquet("./instruction/BACE/BACE.parquet")
 # dt = {}
 # for label in df['output']:
@@ -65,7 +87,7 @@ df = pd.read_json("./instruction/cora_simple/cora_simple_dataset_test.json")
 #     for f in df.loc[i, 'x']:
 #         if len(f) != 128:
 #             print(1)
-
+print(df['output'])
 pbar = tqdm(total=len(df['prompt']))
 max_length = 0
 sec_length = 0
@@ -75,11 +97,12 @@ len_ls = []
 ls = []
 for i, (text, label) in enumerate(zip(df['prompt'], df['output'])):
     prompt = text.split('Abstract: ')[0] + 'Title: ' + text.split('Title: ')[1]
-    prompt = text
+    # prompt = text
     # if data == 'arxiv':
     #     prompt = text.split('Abstract: ')[0] + 'Title: ' + text.split('Title: ')[1]
     # elif data in ['pubmed', 'cora']:
-    #     prompt = 'Given a representation of a paper: <Node 1>, with the following information:\nTitle: ' + text.split('Title: ')[1].split('And the other representation of a paper')[0] + 'And the other representation of a paper: <Node 1>, with the following information:\nTitle: ' + text.split('Title: ')[2]
+    # print(text)
+    # prompt = 'Given a representation of a paper: <Node 1>, with the following information:\nTitle: ' + text.split('Title: ')[1].split('And the other representation of a paper')[0] + 'And the other representation of a paper: <Node 1>, with the following information:\nTitle: ' + text.split('Title: ')[2]
     # prompt = 'Given a electronic product with the following information:' + text[len('Given a representation of a electronic product: <Node 1>, with the following information:'):]
     # prompt = 'Given a book with the following information:' + text[len('Given a representation of a book: <Node 1>, with the following information:'):]
     # prompt = 'Given a electronic product with the following information:' + text[len('Given a representation of a electronic product: <Node 1>, with the following information:'):]

@@ -66,6 +66,12 @@ class TrainerBase(object):
                 torch_dtype=torch.bfloat16, 
                 device_map={"": self.cur_device}
             )
+        elif self.args.llm_type == 'llama3':
+            model = LlamaForCausalLM.from_pretrained(
+                self.args.backbone,
+                torch_dtype=torch.float32,
+                device_map={"": self.cur_device}
+            )
         else:
             model = InstructGLM.from_pretrained(
                 self.args.backbone,
@@ -99,6 +105,7 @@ class TrainerBase(object):
             first_model = LlamaEmbedding(self.args, llama_embed=llama_embeds).to(self.cur_device)
             first_model.get_input_embeddings().register_forward_hook(make_inputs_require_grad)
         else:
+            self.args.gnn_output = llama_embeds.shape[1]
             first_model = GraphEncoder(self.args, llama_embed=llama_embeds).to(self.cur_device, dtype=torch.bfloat16)
             if not self.args.inference:
                 first_model.GT.load_state_dict(torch.load(f'./saved_model/gnn/{self.args.pretrain_gnn}'))

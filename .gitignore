@@ -4,3 +4,5 @@
 /wandb
 vicuna_7B_embeds.pkl
 /instruction
+**/__pycache__/
+/.ipynb_checkpoints

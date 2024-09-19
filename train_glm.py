@@ -44,13 +44,17 @@ def main(args, SEED):
     accelerator.print(args)
 
     with accelerator.main_process_first():
-        tokenizer = LlamaTokenizer.from_pretrained(args.backbone)
         if args.llm_type == 'opt':
+            tokenizer = AutoTokenizer.from_pretrained(args.backbone)
             tokenizer.bos_token_id = 0
             tokenizer.pad_token_id = 1
             tokenizer.eos_token_id = 2
             tokenizer.unk_token_id = 3
+        elif args.llm_type == 'llama3':
+            tokenizer = AutoTokenizer.from_pretrained(args.backbone)
+            tokenizer.add_special_tokens({"pad_token":"<pad>"})
         else:
+            tokenizer = LlamaTokenizer.from_pretrained(args.backbone)
             tokenizer.pad_token=tokenizer.unk_token
         if not args.no_graph:
             special={'additional_special_tokens': ['<Node {}>'.format(i) for i in range(1, 110)]}   # Add a new special token as place holder
@@ -274,9 +278,18 @@ def main(args, SEED):
             embeds = first_model(
                 input_ids=input_ids,
                 is_node=is_node,
-                graph=graph
+                graph=graph,
+                use_llm=args.ablation
             )
-            results = model.g_step(in_embeds=embeds, attention_mask=attention_mask)
+            if args.llm_type == "llama3":
+                results = model.generate(    
+                    inputs_embeds=embeds,
+                    attention_mask=attention_mask,
+                    max_new_tokens=60,
+                    pad_token_id=128256,
+                )
+            else:
+                results = model.g_step(in_embeds=embeds, attention_mask=attention_mask)
             
             results = accelerator.pad_across_processes(results, dim=1, pad_index=tokenizer.pad_token_id)
             results_gathered = accelerator.gather(results).cpu().numpy()
@@ -305,8 +318,12 @@ def main(args, SEED):
 
     # Step 6. Post-processing & Evaluating
     if args.zero_shot:
-        res_path = f'./results/{args.test_dataset}/{args.prefix}_model_results.txt'
-        label_path = f'./results/{args.test_dataset}/{args.prefix}_model_labels.txt'
+        if args.suffix:
+            res_path = f'./results/{args.test_dataset}/{args.prefix}_{args.suffix}_model_results.txt'
+            label_path = f'./results/{args.test_dataset}/{args.prefix}_{args.suffix}_model_labels.txt'
+        else:
+            res_path = f'./results/{args.test_dataset}/{args.prefix}_model_results.txt'
+            label_path = f'./results/{args.test_dataset}/{args.prefix}_model_labels.txt'
     else:
         res_path = f'./results/{args.dataset}/{args.prefix}_model_results.txt'
         label_path = f'./results/{args.dataset}/{args.prefix}_model_labels.txt'
@@ -319,17 +336,17 @@ def main(args, SEED):
             json.dump(eval_decode_label, f)
         
 
-        acc, r, p, f1, auc, cnt = compute_multi_class_metric(args, eval_pred, eval_decode_label)
+        # acc, r, p, f1, auc, cnt = compute_multi_class_metric(args, eval_pred, eval_decode_label)
 
-        accelerator.print(f'Test Acc {acc}, Recall {r}, Precision {p}, F1 {f1}, cnt {cnt}')
-        accelerator.log({
-            'Test Acc': acc,
-            'Test Recall' : r, 
-            'Test Precision' : p, 
-            'Test F1' : f1,
-            'Test AUC': auc,
-            'Test cnt' : cnt
-            })
+        # accelerator.print(f'Test Acc {acc}, Recall {r}, Precision {p}, F1 {f1}, cnt {cnt}')
+        # accelerator.log({
+        #     'Test Acc': acc,
+        #     'Test Recall' : r, 
+        #     'Test Precision' : p, 
+        #     'Test F1' : f1,
+        #     'Test AUC': auc,
+        #     'Test cnt' : cnt
+        #     })
 
 if __name__ == "__main__":
 

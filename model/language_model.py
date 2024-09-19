@@ -81,7 +81,7 @@ class InstructGLM(LlamaForCausalLM):
             attention_mask=attention_mask,
             do_sample=True,
             temperature=0.7,
-            max_new_tokens=128,
+            max_new_tokens=80,
         )
 
         return output

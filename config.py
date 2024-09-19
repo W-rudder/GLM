@@ -44,9 +44,11 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--graph_pooling', type=str, default='sum')
     parser.add_argument('--graph_unsup', action='store_true')
     parser.add_argument('--prefix', type=str, default='trainable_llama_gnn')
+    parser.add_argument('--suffix', type=str, default=None)
     parser.add_argument('--tokenizer', type=str, default='LlamaTokenizerFast')
     parser.add_argument('--config_class', type=str, default='LlamaConfig')
     parser.add_argument('--model_class', type=str, default='InstructGLM')
+    parser.add_argument('--conv_type', type=str, default='sage')
     parser.add_argument('--gt_layers', type=int, default=2)
     parser.add_argument('--num_token', type=int, default=5)
     parser.add_argument('--head', type=int, default=2)
@@ -63,6 +65,8 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--no_graph', action='store_true')
     parser.add_argument('--raw_features', action='store_true')
     parser.add_argument('--zero_shot', action='store_true')
+    parser.add_argument("--mask_token_list", type=str, default=None)
+    parser.add_argument("--ablation", default=False, action='store_true')
     parser.add_argument('--optim', default='adamw')
     parser.add_argument('--weight_decay', type=float, default=0.0)   
     parser.add_argument('--warmup_ratio', type=float, default=0.03)
@@ -77,6 +81,7 @@ def parse_args(parse=True, **optional_kwargs):
     parser.add_argument('--dropout', type=float, default=0.)
     parser.add_argument('--inference', action='store_true')
     parser.add_argument('--best_epoch', type=int, default=0)
+    parser.add_argument('--embed_type', type=str, default='')
 
     # Inference
     parser.add_argument('--gen_max_length', type=int, default=64)

@@ -8,6 +8,8 @@ class SeparatorStyle(Enum):
     SINGLE = auto()
     TWO = auto()
     MPT = auto()
+    LLAMA3 = auto()
+    LLAMA_2 = auto()
 
 
 @dataclasses.dataclass
@@ -45,6 +47,39 @@ class Conversation:
                     ret += role + ": " + message + seps[i % 2]
                 else:
                     ret += role + ":"
+            return ret
+        elif self.sep_style == SeparatorStyle.LLAMA_2:
+            messages = self.messages
+            wrap_sys = lambda msg: f"<<SYS>>\n{msg}\n<</SYS>>\n\n"
+            wrap_inst = lambda msg: f"[INST] {msg} [/INST]"
+            ret = ""
+
+            for i, (role, message) in enumerate(messages):
+                if i == 0:
+                    assert message, "first message should not be none"
+                    assert role == self.roles[0], "first message should come from user"
+                if message:
+                    if type(message) is tuple:
+                        message, _, _ = message
+                    # if i == 0: message = wrap_sys(self.system) + message
+                    if i % 2 == 0:
+                        message = wrap_inst(message)
+                        ret += self.sep + message
+                    else:
+                        ret += " " + message + " " + self.sep2
+                else:
+                    ret += ""
+            ret = ret.lstrip(self.sep)
+            return ret
+        elif self.sep_style == SeparatorStyle.LLAMA3:
+            ret = "<|begin_of_text|>"
+            ret += ""
+            for i, (role, message) in enumerate(self.messages):
+                if message:
+                    ret += f"<|start_header_id|>{role}<|end_header_id|>\n\n"
+                    ret += f"{message.strip()}<|eot_id|>"
+                else:
+                    ret += f"<|start_header_id|>{role}<|end_header_id|>\n\n"
             return ret
         if self.sep_style == SeparatorStyle.MPT:
             ret = self.system + self.sep
@@ -241,6 +276,17 @@ conv_vicuna_v1_1 = Conversation(
     sep2="</s>",
 )
 
+conv_llama_2 = Conversation(
+    system="""You are a helpful, respectful and honest assistant.""",
+    roles=("USER", "ASSISTANT"),
+    version="llama_v2",
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.LLAMA_2,
+    sep="<s>",
+    sep2="</s>",
+)
+
 conv_mpt = Conversation(
     system="""<|im_start|>system
 - You are a helpful language and vision assistant.
@@ -358,6 +404,15 @@ conv_graphchat_v1 = Conversation(
     sep2="</s>",
 )
 
+conv_llama3 = Conversation(
+    system="",
+    roles=("user", "assistant"),
+    messages=(),
+    offset=0,
+    sep_style=SeparatorStyle.LLAMA3,
+    sep="",
+)
+
 default_conversation = conv_v1_2
 conv_templates = {
     "default": conv_v1_2,
@@ -367,6 +422,8 @@ conv_templates = {
     "mpt_multimodal": simple_conv_mpt_multimodal,
     "llava_v1": conv_llava_v1, 
     "graphchat_v1": conv_graphchat_v1, 
+    "llama3": conv_llama3,
+    "llama_2": conv_llama_2,
 
 
     # fastchat

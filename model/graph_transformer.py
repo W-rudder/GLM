@@ -6,6 +6,8 @@ from torch_geometric.utils import unbatch
 from torch_geometric.nn import global_add_pool, global_mean_pool, global_max_pool, GlobalAttention, Set2Set
 from .layers import SAGEConv
 from transformers.configuration_utils import PretrainedConfig
+from torch_geometric.nn.conv import GATConv, GCNConv
+
 
 init = nn.init.xavier_uniform_
 uniformInit = nn.init.uniform
@@ -114,10 +116,11 @@ class GraphEncoder(nn.Module):    # first_model, i.e. simple MLP for dimension t
         elif args.gnn_type == 'GraphSAGE':
             self.GT = GraphSAGE(args)
         elif args.gnn_type == 'SoftPrompt':
+            print("use soft prompt")
             self.GT = GraphSAGE(args)
 
         self.embed_tokens = llama_embed   # freezed Llama-7b word embeddings.
-        self.embed_dim = 4096
+        self.embed_dim = llama_embed.shape[1]
         # self.graph_projector = nn.Sequential(
         #     nn.Linear(args.gnn_output, self.args.neck),
         #     nn.ReLU(),
@@ -162,7 +165,7 @@ class GraphEncoder(nn.Module):    # first_model, i.e. simple MLP for dimension t
             elif isinstance(m, nn.Linear):
                 m.weight.data.normal_(mean=0.0, std=1.0)
 
-    def forward(self, input_ids, is_node, graph):
+    def forward(self, input_ids, is_node, graph, use_llm=False):
         batch_size = input_ids.shape[0]
 
         # old method
@@ -171,6 +174,13 @@ class GraphEncoder(nn.Module):    # first_model, i.e. simple MLP for dimension t
         else:
             node_embedding = self.graph_projector(self.GT(graph.x, graph.edge_index, graph.edge_attr, graph.batch, graph.lp))
             node_embeddings = node_embedding.view(-1, self.embed_dim) # [bs * 5, dim]
+            if self.args.mask_token_list is not None:
+                mask_list = [int(token) for token in self.args.mask_token_list.split(',')]
+                mask = t.tensor([False if token_id in mask_list else True for token_id in range(self.args.num_token)])
+                mask = mask.repeat(batch_size)
+                node_embeddings = node_embeddings[mask]
+                assert node_embeddings.shape[0] == batch_size * (self.args.num_token - len(mask_list))
+
         # new method
         # node_embedding = self.graph_projector(self.GT(graph.x, graph.edge_index, graph.edge_attr, graph.batch, graph.lp))
         # source_embeddings = self.mapping_layer(self.embed_tokens.permute(1, 0)).permute(1, 0)
@@ -182,7 +192,8 @@ class GraphEncoder(nn.Module):    # first_model, i.e. simple MLP for dimension t
         # node_embeddings = self.graph_projector(node_embeddings).view(-1, self.embed_dim)
 
         inputs_embeds = self.embed_tokens[input_ids]
-        inputs_embeds[is_node] = node_embeddings
+        if not use_llm:
+            inputs_embeds[is_node] = node_embeddings
 
         return inputs_embeds # [bsz, seq, dim]
 
@@ -192,7 +203,7 @@ class GraphEncoder(nn.Module):    # first_model, i.e. simple MLP for dimension t
 
         # old method
         node_embedding = self.graph_projector(self.GT(graph.x, graph.edge_index, graph.edge_attr, graph.batch, graph.lp))
-        node_embedding = t.cat([node_embedding, graph.y], dim=-1)
+        # node_embedding = t.cat([node_embedding, graph.y], dim=-1)
 
         return node_embedding # [bsz, seq, dim]     
 
@@ -323,14 +334,22 @@ class GraphSAGE(nn.Module):
         out_channels = args.gnn_output
         edge_dim = args.edge_dim
         num_proj_hidden = out_channels
+
+        if args.conv_type == 'sage':
+            gnn_conv = SAGEConv
+        elif args.conv_type == "gat":
+            gnn_conv = GATConv
+        elif args.conv_type == 'gcn':
+            gnn_conv = GCNConv
+
         self.convs = nn.ModuleList()
         if n_layers > 1:
-            self.convs.append(SAGEConv(in_channels, hidden_channels, edge_dim=edge_dim))
+            self.convs.append(gnn_conv(in_channels, hidden_channels))
             for i in range(1, n_layers - 1):
-                self.convs.append(SAGEConv(hidden_channels, hidden_channels, edge_dim=edge_dim))
-            self.convs.append(SAGEConv(hidden_channels, out_channels, edge_dim=edge_dim))
+                self.convs.append(gnn_conv(hidden_channels, hidden_channels))
+            self.convs.append(gnn_conv(hidden_channels, out_channels))
         else:
-            self.convs.append(SAGEConv(in_channels, out_channels, edge_dim=edge_dim))
+            self.convs.append(gnn_conv(in_channels, out_channels))
 
         # non-linear layer for contrastive loss
         self.fc1 = nn.Linear(out_channels, num_proj_hidden)
@@ -359,7 +378,8 @@ class GraphSAGE(nn.Module):
 
     def forward(self, x, edge_index, edge_attr=None, batch=None, lp=None):
         for i, conv in enumerate(self.convs):
-            x = conv(x, edge_index, edge_attr=edge_attr)
+            # x = conv(x, edge_index, edge_attr=edge_attr)
+            x = conv(x, edge_index)
             if i < len(self.convs) - 1:
                 x = self.activation(x)
                 x = F.dropout(x, p=self.args.dropout, training=self.training)
@@ -372,8 +392,9 @@ class GraphSAGE(nn.Module):
             assert lp.shape[0] == len(x)
             for i in range(len(x)):
                 if lp[i].data.item() == True:
-                    xs.append(x[i][0])
-                    xs.append(x[i][1])
+                    xs.append((x[i][0] + x[i][1]) / 2)
+                    # xs.append(t.max(x[i][0], x[i][1]))
+                    # xs.append(x[i][1])
                 else:
                     xs.append(x[i][0])
             x = t.stack(xs, dim=0)

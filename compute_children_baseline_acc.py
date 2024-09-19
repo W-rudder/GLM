@@ -1,11 +1,17 @@
 import json
-from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score
+from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score, classification_report
 
-with open('./results/book_children/grace_5token_allarxiv_model_labels.txt', 'r') as f:
+with open('./results/book_children/graphsage_0tp_5token_512_neg0_computer_2_3400_more_epoch_children_baseline4_model_labels.txt', 'r') as f:
     eval_decode_label = json.load(f)
 
-with open('./results/book_children/grace_5token_allarxiv_model_results.txt', 'r') as f:
+with open('./results/book_children/graphsage_0tp_5token_512_neg0_computer_2_3400_more_epoch_children_baseline4_model_results.txt', 'r') as f:
     eval_pred = json.load(f)
+
+# with open('./results/book_children/graphsage_5tp_5token_lr_model_labels.txt', 'r') as f:
+#     eval_decode_label = json.load(f)
+
+# with open('./results/book_children/graphsage_5tp_5token_lr_model_results.txt', 'r') as f:
+#     eval_pred = json.load(f)
 
 label_list = [
     'Literature & Fiction',
@@ -37,6 +43,7 @@ label2idx = {k: v for v, k in enumerate(label_list)}
 
 cnt = 0
 y, x = [], []
+s_x, s_y = [], []
 for label, pred in zip(eval_decode_label, eval_pred):
     if '\"' in pred:
         ls = pred.split('\"')
@@ -52,9 +59,9 @@ for label, pred in zip(eval_decode_label, eval_pred):
             elif ans.startswith('Religion'):
                 pred = 'Religions'
                 break
-            # elif ans == "Children's Books":
-            #     pred = "Children's Cookbooks"
-            #     break
+            elif ans == "Children's Books":
+                pred = "Children's Cookbooks"
+                break
         else:
             print(pred)
             pass
@@ -69,22 +76,26 @@ for label, pred in zip(eval_decode_label, eval_pred):
         pred = pred[:-1]
         
     if pred not in label2idx.keys():
-        # print(pred)
+        print(pred)
         cnt += 1
         # continue
-        y.append(label2idx[label])
-        x.append(75)
+        s_y.append(label2idx[label])
+        s_x.append(75)
     else:
         y.append(label2idx[label])
         x.append(label2idx[pred])
+        s_y.append(label2idx[label])
+        s_x.append(label2idx[pred])
 
-acc = accuracy_score(y, x)
-r = recall_score(y, x, average="weighted")
-p = precision_score(y, x, average="weighted")
-f1 = f1_score(y, x, average="weighted")
+# acc = accuracy_score(y, x)
+acc = accuracy_score(s_y, s_x)
+r = recall_score(y, x, average="macro")
+p = precision_score(y, x, average="macro")
+f1 = f1_score(y, x, average="macro")
 
 print(acc)
 print(f1)
 print(p)
 print(r)
 print(cnt / len(eval_decode_label))
+print(classification_report(y, x))

@@ -1,10 +1,14 @@
 import json
-from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score
+import re
+from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score, classification_report
 
-with open('./results/pubmed/graphsage_1000tp_5token_512_neg0_arxiv_linear_3_es_model_labels.txt', 'r') as f:
+prefix = 'graphsage_1000tp_5token_512_neg0_arxiv_linear_1_3400_13b_1'
+# prefix = 'soft_prompt_5'
+
+with open(f'./results/pubmed/{prefix}_model_labels.txt', 'r') as f:
     eval_decode_label = json.load(f)
 
-with open('./results/pubmed/graphsage_1000tp_5token_512_neg0_arxiv_linear_3_es_model_results.txt', 'r') as f:
+with open(f'./results/pubmed/{prefix}_model_results.txt', 'r') as f:
     eval_pred = json.load(f)
 
 
@@ -39,63 +43,15 @@ label_list = [
 ]
 l_label_list = [label.lower() for label in label_list]
 label2idx = {k.lower(): v for v, k in enumerate(label_list)}
+patterns = [label.lower() for label in label_list]
 
 cnt = 0
 y, x = [], []
+s_y, s_x = [], []
 for label, pred in zip(eval_decode_label, eval_pred):
     pred = pred.lower()
+    ori = pred
     label = label.lower()
-
-    # if pred.startswith("the paper involves "):
-    #     pred = pred[len("the paper involves "):].replace('\"', '')
-    #     if ', ' in pred:
-    #         pred = pred.split(', ')[0]
-    #     if len(pred.split(' ')) > 3:
-    #         pred = " ".join(pred.split(' ')[:3])
-    # if pred.startswith("this paper involves "):
-    #     pred = pred[len("this paper involves "):].replace('\"', '')
-    #     if len(pred.split(' ')) > 3:
-    #         pred = " ".join(pred.split(' ')[:3])
-    # else:
-    #     if 'involves' in pred:
-    #         pred = pred.split('involves')[1]
-    #         if pred.startswith(' is '):
-    #             pred = pred.replace('\"', '')[4:]
-    #             if len(pred.split(' ')) > 3:
-    #                 pred = " ".join(pred.split(' ')[:3])
-    #         elif pred.startswith(' are '):
-    #             pred = pred.replace('\"', '')[5:]
-    #             if len(pred.split(' ')) > 3:
-    #                 pred = " ".join(pred.split(' ')[:3])
-    #         elif pred.replace('\"', '')[1:].split(' ')[2] in ['diabetes', 'diabetes.', 'diabetes,']:
-    #             pred = ' '.join(pred.replace('\"', '')[1:].split(' ')[:3])
-    #         else:
-    #             pass
-    #     elif pred.split(' ')[2] not in ['diabetes', 'diabetes.', 'diabetes,']:
-    #         if 'the most likely diabetes type for the paper is' in pred:
-    #             pred = pred.split('\"')[1]
-    #         elif '\"' in pred:
-    #             if not check_ans(pred.split('\"')):
-    #                 print(pred.split('\"'))
-    #                 pass
-    #             else:
-    #                 pred = get_ans(pred.split('\"'))
-    #             # print(pred.split('\"'))
-    #             # if pred.split('\"')[1].split(' ')[2] == 'diabetes':
-    #             #     pred = pred.split('\"')[1]
-    #             # else:
-    #             #     print(pred)
-    #                 # pred = pred.split('\"')[3]
-    #             # print(pred)
-    #         else:
-    #             if pred.split(' ')[-1] in ['diabetes', 'diabetes.', 'diabetes,']:
-    #                 pred = ' '.join(pred.split(' ')[-3:])
-    #             else:
-    #                 # print(pred)
-    #                 pass
-    #     else:
-    #         pred = ' '.join(pred.split(' ')[:3])
-    #         # print(pred)
 
     if '\"' in pred:
         ls = pred.split('\"')
@@ -112,12 +68,22 @@ for label, pred in zip(eval_decode_label, eval_pred):
     else:
         pred = pred
 
-    if pred.startswith('type 2 diabetes'):
+    if pred.startswith('type 2'):
         pred = 'type 2 diabetes'
-    elif pred.startswith('type 1 diabetes'):
+    elif pred.startswith('type 1'):
         pred = 'type 1 diabetes'
     elif pred.startswith('experimentally induced diabetes'):
         pred = 'experimentally induced diabetes'
+
+    # matches = []
+    # for pattern in patterns:
+    #     match_label = re.findall(pattern, pred)
+    #     if len(match_label) >= 1:
+    #         matches.append(match_label[0])
+    # if len(matches) >= 1:
+    #     pred = matches[0]
+    # else:
+    #     pred = pred
             
 
     if pred.endswith('.') or pred.endswith('?') or pred.endswith(','):
@@ -156,16 +122,19 @@ for label, pred in zip(eval_decode_label, eval_pred):
     pred = pred.strip()
         
     if pred not in label2idx.keys():
-        print("|"+pred+"|")
+        print(pred)
         cnt += 1
         # continue
-        y.append(label2idx[label])
-        x.append(2)
+        s_y.append(label2idx[label])
+        s_x.append(75)
     else:
         y.append(label2idx[label])
         x.append(label2idx[pred])
+        s_y.append(label2idx[label])
+        s_x.append(label2idx[pred])
 
-acc = accuracy_score(y, x)
+# acc = accuracy_score(y, x)
+acc = accuracy_score(s_y, s_x)
 r = recall_score(y, x, average="macro")
 p = precision_score(y, x, average="macro")
 f1 = f1_score(y, x, average="macro")
@@ -174,7 +143,9 @@ f1 = f1_score(y, x, average="macro")
 # f1 = f1_score(y, x, average="weighted")
 
 print(f"Acc: {acc}")
+print(accuracy_score(y, x))
 print(f"F1: {f1}")
 print(f"Precison: {p}")
 print(f"Recall: {r}")
 print(cnt / len(eval_decode_label))
+print(classification_report(y, x))
