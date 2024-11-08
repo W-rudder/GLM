@@ -154,9 +154,11 @@ class InstructionDataset(Dataset):
         self.mode = mode
 
         if args.zero_shot:
-            self.instructions = get_instructions(f"./instruction/{args.test_dataset}/{args.test_dataset}_dataset_{self.mode}.json")
+            self.instructions = get_instructions(f"../TAGNN/instruction_new/{args.test_dataset}/{args.test_dataset}_dataset_{self.mode}.json")
+            # self.instructions = get_instructions(f"./instruction/{args.test_dataset}/{args.test_dataset}_dataset_{self.mode}.json")
         else:
-            self.instructions = get_instructions(f"./instruction/{args.dataset}/{args.dataset}_dataset_{self.mode}.json")
+            self.instructions = get_instructions(f"../TAGNN/instruction_new/{args.dataset}/{args.dataset}_dataset_{self.mode}.json")
+            # self.instructions = get_instructions(f"./instruction/{args.dataset}/{args.dataset}_dataset_{self.mode}.json")
             # self.instructions = get_instructions(f"./instruction/{args.dataset}/{args.dataset}_dataset_train.json")
         # args.gnn_input = len(self.instructions.loc[0, 'x'][0])
         args.gnn_input = len(self.instructions.loc[0, 'x'][0]) + len(self.instructions.loc[0, 'distance_list'][0])

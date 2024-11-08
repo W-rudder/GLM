@@ -1,7 +1,7 @@
 import json
 from sklearn.metrics import recall_score, precision_score, f1_score, accuracy_score
 
-prefix = 'graphsage_1000tp_20token_512_neg0_arxiv_linear_1_3400_13b_1'
+prefix = 'graphsage_ae_5token_512_neg0_arxiv_linear_1_epoch_100'
 # prefix = 'soft_prompt_5'
 
 with open(f'./results/arxiv/{prefix}_model_labels.txt', 'r') as f:
